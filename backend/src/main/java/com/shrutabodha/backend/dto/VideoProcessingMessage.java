@@ -12,4 +12,9 @@ import java.util.UUID;
 public class VideoProcessingMessage {
     private UUID videoId;
     private String s3Url;
+
+    public VideoProcessingMessage(UUID videoId, String s3Url){
+        this.videoId=videoId;
+        this.s3Url=s3Url;
+    }
 }

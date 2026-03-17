@@ -7,6 +7,7 @@ package com.shrutabodha.backend.service;
 //upload file to s3
 //save metadata in database
 
+import com.shrutabodha.backend.dto.VideoProcessingMessage;
 import com.shrutabodha.backend.entity.User;
 import com.shrutabodha.backend.entity.Video;
 import com.shrutabodha.backend.enums.VideoStatus;
@@ -25,25 +26,33 @@ public class VideoService {
     private final S3Client s3Client;
     private final VideoRepository videoRepository;
     private final UserRepository userRepository;
+    private final VideoProcessingProducerService producerService;
 
     private final String bucketName="shrutabodha-videos";
 
 
     public VideoService(S3Client s3Client,
                         VideoRepository videoRepository,
-                        UserRepository userRepository){
+                        UserRepository userRepository,
+                        VideoProcessingProducerService producerService){
         this.s3Client=s3Client;
         this.videoRepository=videoRepository;
         this.userRepository=userRepository;
+        this.producerService=producerService;
     }
 
     public Video uploadVideo(MultipartFile file, UUID userId,String name) throws Exception{
         UUID videoId=UUID.randomUUID();
+
         User user=userRepository.findById(userId)
                 .orElseThrow(()-> new RuntimeException("User not found"));
 
-        String extension=file.getOriginalFilename()
-                .substring(file.getOriginalFilename().lastIndexOf("."));
+        String original = file.getOriginalFilename();
+
+        if(original==null||!original.contains(".")){
+            throw new RuntimeException("Invalid file name");
+        }
+        String extension = original.substring(original.lastIndexOf("."));
         String key=userId+"/"+videoId+extension;
         PutObjectRequest request=PutObjectRequest.builder()
                 .bucket(bucketName)
@@ -69,7 +78,16 @@ public class VideoService {
                 .updatedAt(Instant.now())
                 .build();
 
-        return videoRepository.save(video);
+        Video savedVideo=videoRepository.save(video);
+
+        VideoProcessingMessage message=VideoProcessingMessage.builder()
+                .videoId(savedVideo.getId())
+                .s3Url(savedVideo.getS3Url())
+                .build();
+
+        producerService.sendVideoForProcessing(message);
+
+        return savedVideo;
 
     }
 
